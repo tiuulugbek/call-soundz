@@ -1,0 +1,791 @@
+// API Base URL
+const API_BASE = window.location.origin;
+let authToken = localStorage.getItem('authToken');
+
+// API Helper Functions
+async function apiRequest(endpoint, options = {}) {
+    const url = `${API_BASE}${endpoint}`;
+    const headers = {
+        'Content-Type': 'application/json',
+        ...options.headers
+    };
+
+    if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+    }
+
+    const response = await fetch(url, {
+        ...options,
+        headers
+    });
+
+    if (response.status === 401) {
+        logout();
+        return null;
+    }
+
+    return response.json();
+}
+
+// Login
+async function login(username, password) {
+    const data = await apiRequest('/api/v1/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password })
+    });
+
+    if (data && data.success) {
+        authToken = data.data.token;
+        localStorage.setItem('authToken', authToken);
+        localStorage.setItem('user', JSON.stringify(data.data.user));
+        return true;
+    }
+    return false;
+}
+
+// Logout
+function logout() {
+    authToken = null;
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('user');
+    showPage('login');
+}
+
+// Page Navigation
+function showPage(page) {
+    document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+    document.querySelectorAll('.content-section').forEach(s => s.classList.add('hidden'));
+    document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+
+    if (page === 'login') {
+        document.getElementById('login-page').classList.remove('hidden');
+    } else {
+        document.getElementById('dashboard-page').classList.remove('hidden');
+        document.querySelector(`[data-page="${page}"]`).classList.add('active');
+        document.getElementById(`${page}-content`).classList.remove('hidden');
+        loadPageData(page);
+    }
+}
+
+// Load Page Data
+async function loadPageData(page) {
+    switch(page) {
+        case 'dashboard':
+            await loadDashboard();
+            // Auto refresh every 30 seconds
+            if (window.dashboardInterval) clearInterval(window.dashboardInterval);
+            window.dashboardInterval = setInterval(loadDashboard, 30000);
+            break;
+        case 'extensions':
+            await loadExtensions();
+            break;
+        case 'calls':
+            await loadCalls();
+            break;
+        case 'recordings':
+            await loadRecordings();
+            break;
+        case 'ivr':
+            await loadIVR();
+            break;
+        case 'queues':
+            await loadQueues();
+            break;
+        case 'stats':
+            await loadStats();
+            break;
+    }
+}
+
+// Dashboard
+async function loadDashboard() {
+    const stats = await apiRequest('/api/v1/stats/dashboard');
+    if (stats && stats.success) {
+        document.getElementById('stat-total-calls').textContent = stats.data.totalCalls || 0;
+        document.getElementById('stat-active-calls').textContent = stats.data.activeCalls || 0;
+        document.getElementById('stat-extensions').textContent = stats.data.totalExtensions || 0;
+        document.getElementById('stat-online-extensions').textContent = stats.data.onlineExtensions || 0;
+    }
+}
+
+// Extensions
+async function loadExtensions() {
+    const extensions = await apiRequest('/api/v1/extensions');
+    const tbody = document.getElementById('extensions-table-body');
+    
+    if (extensions && extensions.success && extensions.data.length > 0) {
+        tbody.innerHTML = extensions.data.map(ext => `
+            <tr>
+                <td>${ext.username}</td>
+                <td>${ext.displayName || '-'}</td>
+                <td>${ext.email || '-'}</td>
+                <td>
+                    <span class="status-badge ${ext.enabled ? 'status-enabled' : 'status-disabled'}">
+                        ${ext.enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                </td>
+                <td>
+                    <button class="btn btn-sm view-ext-btn" data-id="${ext.id}" title="Ko'rish">👁️</button>
+                    <button class="btn btn-sm edit-ext-btn" data-id="${ext.id}" title="Tahrirlash">✏️</button>
+                    <button class="btn btn-sm btn-danger delete-ext-btn" data-id="${ext.id}" title="O'chirish">🗑️</button>
+                </td>
+            </tr>
+        `).join('');
+    } else {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px;">Extensions topilmadi. Birinchi extensionni yarating.</td></tr>';
+    }
+}
+
+// Calls
+async function loadCalls() {
+    const calls = await apiRequest('/api/v1/calls?limit=50');
+    const tbody = document.getElementById('calls-table-body');
+    
+    if (calls && calls.success && calls.data.length > 0) {
+        tbody.innerHTML = calls.data.map(call => `
+            <tr>
+                <td>${call.fromNumber || '-'}</td>
+                <td>${call.toNumber || '-'}</td>
+                <td><span class="badge badge-${call.direction}">${call.direction}</span></td>
+                <td><span class="status-badge status-${call.status}">${call.status}</span></td>
+                <td>${formatDuration(call.duration || 0)}</td>
+                <td>${new Date(call.startedAt).toLocaleString()}</td>
+                <td><button class="btn btn-sm view-call-btn" data-id="${call.id}" title="Ko'rish">👁️</button></td>
+            </tr>
+        `).join('');
+    } else {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px;">Qo\'ng\'iroqlar topilmadi.</td></tr>';
+    }
+}
+
+// Recordings
+async function loadRecordings() {
+    const recordings = await apiRequest('/api/v1/recordings?limit=50');
+    const tbody = document.getElementById('recordings-table-body');
+    
+    if (recordings && recordings.success && recordings.data.length > 0) {
+        tbody.innerHTML = recordings.data.map(rec => `
+            <tr>
+                <td>${rec.fileName}</td>
+                <td>${formatDuration(rec.duration || 0)}</td>
+                <td>${formatFileSize(rec.fileSize || 0)}</td>
+                <td>${new Date(rec.createdAt).toLocaleString()}</td>
+                <td>
+                    <button class="btn btn-sm download-rec-btn" data-id="${rec.id}" title="Yuklab olish">⬇️</button>
+                    <button class="btn btn-sm btn-danger delete-rec-btn" data-id="${rec.id}" title="O'chirish">🗑️</button>
+                </td>
+            </tr>
+        `).join('');
+    } else {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px;">Recordinglar topilmadi.</td></tr>';
+    }
+}
+
+// IVR Menus
+async function loadIVR() {
+    const ivrMenus = await apiRequest('/api/v1/ivr-menus');
+    const tbody = document.getElementById('ivr-table-body');
+    
+    if (ivrMenus && ivrMenus.success && ivrMenus.data.length > 0) {
+        tbody.innerHTML = ivrMenus.data.map(ivr => `
+            <tr>
+                <td>${ivr.name}</td>
+                <td>${ivr.description || '-'}</td>
+                <td><span class="status-badge ${ivr.enabled ? 'status-enabled' : 'status-disabled'}">${ivr.enabled ? 'Enabled' : 'Disabled'}</span></td>
+                <td>
+                    <button class="btn btn-sm edit-ivr-btn" data-id="${ivr.id}" title="Tahrirlash">✏️</button>
+                    <button class="btn btn-sm btn-danger delete-ivr-btn" data-id="${ivr.id}" title="O'chirish">🗑️</button>
+                </td>
+            </tr>
+        `).join('');
+    } else {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px;">IVR menular topilmadi.</td></tr>';
+    }
+}
+
+// Queues
+async function loadQueues() {
+    const queues = await apiRequest('/api/v1/queues');
+    const tbody = document.getElementById('queues-table-body');
+    
+    if (queues && queues.success && queues.data.length > 0) {
+        tbody.innerHTML = queues.data.map(queue => `
+            <tr>
+                <td>${queue.name}</td>
+                <td>${queue.description || '-'}</td>
+                <td>${queue.strategy}</td>
+                <td><span class="status-badge ${queue.enabled ? 'status-enabled' : 'status-disabled'}">${queue.enabled ? 'Enabled' : 'Disabled'}</span></td>
+                <td>
+                    <button class="btn btn-sm view-queue-btn" data-id="${queue.id}" title="Ko'rish">👁️</button>
+                    <button class="btn btn-sm edit-queue-btn" data-id="${queue.id}" title="Tahrirlash">✏️</button>
+                </td>
+            </tr>
+        `).join('');
+    } else {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px;">Queuelar topilmadi.</td></tr>';
+    }
+}
+
+// Statistics
+async function loadStats() {
+    const stats = await apiRequest('/api/v1/stats/dashboard');
+    if (stats && stats.success) {
+        document.getElementById('stats-total-calls').textContent = stats.data.totalCalls || 0;
+        document.getElementById('stats-today-calls').textContent = stats.data.todayCalls || 0;
+        document.getElementById('stats-today-duration').textContent = formatDuration(stats.data.todayDuration || 0);
+    }
+}
+
+// Helper Functions
+function formatDuration(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    if (hours > 0) {
+        return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+    return `${minutes}:${String(secs).padStart(2, '0')}`;
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+// Extension Functions
+async function addExtension() {
+    const username = prompt('Username kiriting (masalan: 1001):');
+    if (!username) return;
+    
+    const password = prompt('Parol kiriting:');
+    if (!password) return;
+    
+    const displayName = prompt('Display Name (ixtiyoriy):') || null;
+    const email = prompt('Email (ixtiyoriy):') || null;
+    
+    // Validation
+    if (username.length < 3 || username.length > 50) {
+        alert('Username 3-50 belgi orasida bo\'lishi kerak');
+        return;
+    }
+    
+    if (password.length < 6) {
+        alert('Parol kamida 6 belgi bo\'lishi kerak');
+        return;
+    }
+    
+    try {
+        const payload = {
+            username: username.trim(),
+            password: password
+        };
+        
+        if (displayName && displayName.trim()) {
+            payload.displayName = displayName.trim();
+        }
+        
+        if (email && email.trim()) {
+            payload.email = email.trim();
+        }
+        
+        const data = await apiRequest('/api/v1/extensions', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        
+        if (data && data.success) {
+            const sipInfo = `
+Extension yaratildi!
+
+SIP Account Ma'lumotlari:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Username: ${username}
+Password: ${password}
+Server: call.soundz.uz
+Port: 5060
+Transport: UDP
+Domain: call.soundz.uz
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Bu ma'lumotlarni SIP telefon sozlamalariga kiriting.
+            `;
+            alert(sipInfo);
+            loadExtensions();
+        } else {
+            alert('Xato: ' + (data?.error || 'Noma\'lum xato'));
+        }
+    } catch (error) {
+        alert('Xato: ' + error.message);
+    }
+}
+
+async function deleteExtension(id) {
+    if (!confirm('Bu extensionni o\'chirishni xohlaysizmi?\n\nEslatma: Barcha ma\'lumotlar o\'chib ketadi!')) return;
+    
+    try {
+        const data = await apiRequest(`/api/v1/extensions/${id}`, {
+            method: 'DELETE'
+        });
+        
+        if (data && data.success) {
+            alert('Extension muvaffaqiyatli o\'chirildi');
+            loadExtensions();
+        } else {
+            alert('Xato: ' + (data?.error || 'Noma\'lum xato'));
+        }
+    } catch (error) {
+        alert('Xato: ' + error.message);
+    }
+}
+
+async function viewExtension(id) {
+    const extension = await apiRequest(`/api/v1/extensions/${id}`);
+    if (extension && extension.success) {
+        const ext = extension.data;
+        const status = await apiRequest(`/api/v1/extensions/${id}/status`);
+        const onlineStatus = status && status.data ? (status.data.online ? 'Online' : 'Offline') : 'Unknown';
+        
+        const info = `
+Extension Ma'lumotlari:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Username: ${ext.username}
+Display Name: ${ext.displayName || '-'}
+Email: ${ext.email || '-'}
+Status: ${ext.enabled ? 'Enabled' : 'Disabled'}
+Online: ${onlineStatus}
+Call Forward: ${ext.callForwardEnabled ? 'Enabled → ' + ext.callForwardNumber : 'Disabled'}
+Voicemail: ${ext.voicemailEnabled ? 'Enabled' : 'Disabled'}
+Recording: ${ext.recordingEnabled ? 'Enabled' : 'Disabled'}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        `;
+        alert(info);
+    }
+}
+
+// Recording Functions
+async function downloadRecording(id) {
+    const token = localStorage.getItem('authToken');
+    const url = `${API_BASE}/api/v1/recordings/${id}/download`;
+    
+    // Fetch bilan yuklab olish
+    try {
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (response.ok) {
+            const blob = await response.blob();
+            const recording = await apiRequest(`/api/v1/recordings/${id}`);
+            const fileName = recording && recording.success ? recording.data.fileName : `recording-${id}.wav`;
+            
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.download = fileName;
+            link.click();
+        } else {
+            alert('Recording yuklab olishda xato');
+        }
+    } catch (error) {
+        alert('Xato: ' + error.message);
+    }
+}
+
+async function deleteRecording(id) {
+    if (!confirm('Bu recordingni o\'chirishni xohlaysizmi?')) return;
+    
+    try {
+        const data = await apiRequest(`/api/v1/recordings/${id}`, {
+            method: 'DELETE'
+        });
+        
+        if (data && data.success) {
+            alert('Recording o\'chirildi');
+            loadRecordings();
+        } else {
+            alert('Xato: ' + (data?.error || 'Noma\'lum xato'));
+        }
+    } catch (error) {
+        alert('Xato: ' + error.message);
+    }
+}
+
+// IVR Functions
+async function addIVR() {
+    const name = prompt('IVR nomi kiriting:');
+    if (!name) return;
+    
+    const description = prompt('Tavsif (ixtiyoriy):') || '';
+    const timeout = parseInt(prompt('Timeout (sekund, default: 10):') || '10');
+    const maxAttempts = parseInt(prompt('Maksimal urinishlar (default: 3):') || '3');
+    
+    // Oddiy config - keyinchalik yaxshilash mumkin
+    const config = {
+        "0": { "action": "extension", "target": "1001" },
+        "1": { "action": "queue", "target": "1" },
+        "2": { "action": "voicemail", "target": "1001" }
+    };
+    
+    try {
+        const data = await apiRequest('/api/v1/ivr-menus', {
+            method: 'POST',
+            body: JSON.stringify({ name, description, timeout, maxAttempts, config })
+        });
+        
+        if (data && data.success) {
+            alert('IVR menu muvaffaqiyatli yaratildi!');
+            loadIVR();
+        } else {
+            alert('Xato: ' + (data?.error || 'Noma\'lum xato'));
+        }
+    } catch (error) {
+        alert('Xato: ' + error.message);
+    }
+}
+
+async function editIVR(id) {
+    const ivr = await apiRequest(`/api/v1/ivr-menus/${id}`);
+    if (!ivr || !ivr.success) {
+        alert('IVR menu topilmadi');
+        return;
+    }
+    
+    const name = prompt('IVR nomi:', ivr.data.name);
+    if (name === null) return;
+    
+    const description = prompt('Tavsif:', ivr.data.description || '');
+    const enabled = confirm('IVR faolmi?', ivr.data.enabled);
+    
+    try {
+        const data = await apiRequest(`/api/v1/ivr-menus/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ name, description, enabled })
+        });
+        
+        if (data && data.success) {
+            alert('IVR menu yangilandi');
+            loadIVR();
+        } else {
+            alert('Xato: ' + (data?.error || 'Noma\'lum xato'));
+        }
+    } catch (error) {
+        alert('Xato: ' + error.message);
+    }
+}
+
+async function deleteIVR(id) {
+    if (!confirm('Bu IVR menuni o\'chirishni xohlaysizmi?')) return;
+    
+    try {
+        const data = await apiRequest(`/api/v1/ivr-menus/${id}`, {
+            method: 'DELETE'
+        });
+        
+        if (data && data.success) {
+            alert('IVR menu o\'chirildi');
+            loadIVR();
+        } else {
+            alert('Xato: ' + (data?.error || 'Noma\'lum xato'));
+        }
+    } catch (error) {
+        alert('Xato: ' + error.message);
+    }
+}
+
+// Queue Functions
+async function addQueue() {
+    const name = prompt('Queue nomi kiriting:');
+    if (!name) return;
+    
+    const description = prompt('Tavsif (ixtiyoriy):') || '';
+    const strategy = prompt('Strategy (ringall/leastrecent/fewestcalls/random, default: ringall):', 'ringall') || 'ringall';
+    const timeout = parseInt(prompt('Timeout (sekund, default: 30):') || '30');
+    const maxWait = parseInt(prompt('Maksimal kutish vaqti (sekund, default: 300):') || '300');
+    
+    try {
+        const data = await apiRequest('/api/v1/queues', {
+            method: 'POST',
+            body: JSON.stringify({ name, description, strategy, timeout, maxWait })
+        });
+        
+        if (data && data.success) {
+            alert('Queue muvaffaqiyatli yaratildi!\n\nKeyingi qadam: Queue ga extension qo\'shing.');
+            loadQueues();
+        } else {
+            alert('Xato: ' + (data?.error || 'Noma\'lum xato'));
+        }
+    } catch (error) {
+        alert('Xato: ' + error.message);
+    }
+}
+
+async function viewQueue(id) {
+    const queue = await apiRequest(`/api/v1/queues/${id}`);
+    if (queue && queue.success) {
+        const q = queue.data;
+        const members = q.members || [];
+        const membersList = members.length > 0 
+            ? members.map(m => `  - ${m.username} (${m.display_name || '-'})`).join('\n')
+            : '  Hech kim qo\'shilmagan';
+        
+        const info = `
+Queue Ma'lumotlari:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Nomi: ${q.name}
+Tavsif: ${q.description || '-'}
+Strategy: ${q.strategy}
+Timeout: ${q.timeout} sekund
+Max Wait: ${q.maxWait} sekund
+Status: ${q.enabled ? 'Faol' : 'Nofaol'}
+
+Members (${members.length}):
+${membersList}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        `;
+        alert(info);
+    }
+}
+
+async function editQueue(id) {
+    const queue = await apiRequest(`/api/v1/queues/${id}`);
+    if (!queue || !queue.success) {
+        alert('Queue topilmadi');
+        return;
+    }
+    
+    const q = queue.data;
+    const name = prompt('Queue nomi:', q.name);
+    if (name === null) return;
+    
+    const description = prompt('Tavsif:', q.description || '');
+    const strategy = prompt('Strategy (ringall/leastrecent/fewestcalls/random):', q.strategy) || q.strategy;
+    const timeout = parseInt(prompt('Timeout (sekund):', q.timeout) || q.timeout);
+    const enabled = confirm('Queue faolmi?', q.enabled);
+    
+    try {
+        const data = await apiRequest(`/api/v1/queues/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ name, description, strategy, timeout, enabled })
+        });
+        
+        if (data && data.success) {
+            alert('Queue yangilandi');
+            loadQueues();
+        } else {
+            alert('Xato: ' + (data?.error || 'Noma\'lum xato'));
+        }
+    } catch (error) {
+        alert('Xato: ' + error.message);
+    }
+}
+
+// Extension Edit
+async function editExtension(id) {
+    const extension = await apiRequest(`/api/v1/extensions/${id}`);
+    if (!extension || !extension.success) {
+        alert('Extension topilmadi');
+        return;
+    }
+    
+    const ext = extension.data;
+    const displayName = prompt('Display Name:', ext.displayName || '');
+    if (displayName === null) return;
+    
+    const email = prompt('Email:', ext.email || '');
+    if (email === null) return;
+    
+    const enabled = confirm('Extension faolmi?', ext.enabled);
+    
+    try {
+        const data = await apiRequest(`/api/v1/extensions/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ 
+                displayName: displayName || null,
+                email: email || null,
+                enabled: enabled
+            })
+        });
+        
+        if (data && data.success) {
+            alert('Extension muvaffaqiyatli yangilandi');
+            loadExtensions();
+        } else {
+            alert('Xato: ' + (data?.error || 'Noma\'lum xato'));
+        }
+    } catch (error) {
+        alert('Xato: ' + error.message);
+    }
+}
+
+// Call Functions
+async function viewCall(id) {
+    const call = await apiRequest(`/api/v1/calls/${id}`);
+    if (call && call.success) {
+        const c = call.data;
+        const info = `
+Qo'ng'iroq Ma'lumotlari:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ID: ${c.id}
+From: ${c.fromNumber || '-'}
+To: ${c.toNumber || '-'}
+Direction: ${c.direction}
+Status: ${c.status}
+Duration: ${formatDuration(c.duration || 0)}
+Started: ${new Date(c.startedAt).toLocaleString()}
+${c.answeredAt ? 'Answered: ' + new Date(c.answeredAt).toLocaleString() : ''}
+${c.endedAt ? 'Ended: ' + new Date(c.endedAt).toLocaleString() : ''}
+${c.hangupCause ? 'Hangup Cause: ' + c.hangupCause : ''}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        `;
+        alert(info);
+    }
+}
+
+// Event Listeners
+document.addEventListener('DOMContentLoaded', () => {
+    // Check if logged in
+    if (authToken) {
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        document.getElementById('user-name').textContent = user.username || 'Admin';
+        showPage('dashboard');
+    } else {
+        showPage('login');
+    }
+
+    // Login form
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        const errorDiv = document.getElementById('login-error');
+
+        errorDiv.textContent = '';
+        
+        const success = await login(username, password);
+        if (success) {
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
+            document.getElementById('user-name').textContent = user.username || 'Admin';
+            showPage('dashboard');
+        } else {
+            errorDiv.textContent = 'Noto\'g\'ri username yoki password';
+        }
+    });
+
+    // Logout
+    document.getElementById('logout-btn').addEventListener('click', logout);
+
+    // Menu navigation
+    document.querySelectorAll('.menu-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            const page = item.getAttribute('data-page');
+            showPage(page);
+        });
+    });
+
+    // Quick actions
+    const quickAddExtBtn = document.getElementById('quick-add-extension-btn');
+    if (quickAddExtBtn) {
+        quickAddExtBtn.addEventListener('click', () => {
+            showPage('extensions');
+            setTimeout(() => addExtension(), 100);
+        });
+    }
+
+    const quickViewCallsBtn = document.getElementById('quick-view-calls-btn');
+    if (quickViewCallsBtn) {
+        quickViewCallsBtn.addEventListener('click', () => {
+            showPage('calls');
+        });
+    }
+
+    const quickViewExtBtn = document.getElementById('quick-view-extensions-btn');
+    if (quickViewExtBtn) {
+        quickViewExtBtn.addEventListener('click', () => {
+            showPage('extensions');
+        });
+    }
+
+    // Page action buttons
+    const addExtBtn = document.getElementById('add-extension-btn');
+    if (addExtBtn) {
+        addExtBtn.addEventListener('click', addExtension);
+    }
+
+    const refreshCallsBtn = document.getElementById('refresh-calls-btn');
+    if (refreshCallsBtn) {
+        refreshCallsBtn.addEventListener('click', loadCalls);
+    }
+
+    const refreshRecordingsBtn = document.getElementById('refresh-recordings-btn');
+    if (refreshRecordingsBtn) {
+        refreshRecordingsBtn.addEventListener('click', loadRecordings);
+    }
+
+    const addIvrBtn = document.getElementById('add-ivr-btn');
+    if (addIvrBtn) {
+        addIvrBtn.addEventListener('click', addIVR);
+    }
+
+    const addQueueBtn = document.getElementById('add-queue-btn');
+    if (addQueueBtn) {
+        addQueueBtn.addEventListener('click', addQueue);
+    }
+
+    // Event delegation for dynamic buttons
+    document.addEventListener('click', (e) => {
+        // Extension buttons
+        if (e.target.classList.contains('view-ext-btn') || e.target.closest('.view-ext-btn')) {
+            const btn = e.target.classList.contains('view-ext-btn') ? e.target : e.target.closest('.view-ext-btn');
+            viewExtension(parseInt(btn.getAttribute('data-id')));
+        }
+        if (e.target.classList.contains('edit-ext-btn') || e.target.closest('.edit-ext-btn')) {
+            const btn = e.target.classList.contains('edit-ext-btn') ? e.target : e.target.closest('.edit-ext-btn');
+            editExtension(parseInt(btn.getAttribute('data-id')));
+        }
+        if (e.target.classList.contains('delete-ext-btn') || e.target.closest('.delete-ext-btn')) {
+            const btn = e.target.classList.contains('delete-ext-btn') ? e.target : e.target.closest('.delete-ext-btn');
+            deleteExtension(parseInt(btn.getAttribute('data-id')));
+        }
+
+        // Call buttons
+        if (e.target.classList.contains('view-call-btn') || e.target.closest('.view-call-btn')) {
+            const btn = e.target.classList.contains('view-call-btn') ? e.target : e.target.closest('.view-call-btn');
+            viewCall(parseInt(btn.getAttribute('data-id')));
+        }
+
+        // Recording buttons
+        if (e.target.classList.contains('download-rec-btn') || e.target.closest('.download-rec-btn')) {
+            const btn = e.target.classList.contains('download-rec-btn') ? e.target : e.target.closest('.download-rec-btn');
+            downloadRecording(parseInt(btn.getAttribute('data-id')));
+        }
+        if (e.target.classList.contains('delete-rec-btn') || e.target.closest('.delete-rec-btn')) {
+            const btn = e.target.classList.contains('delete-rec-btn') ? e.target : e.target.closest('.delete-rec-btn');
+            deleteRecording(parseInt(btn.getAttribute('data-id')));
+        }
+
+        // IVR buttons
+        if (e.target.classList.contains('edit-ivr-btn') || e.target.closest('.edit-ivr-btn')) {
+            const btn = e.target.classList.contains('edit-ivr-btn') ? e.target : e.target.closest('.edit-ivr-btn');
+            editIVR(parseInt(btn.getAttribute('data-id')));
+        }
+        if (e.target.classList.contains('delete-ivr-btn') || e.target.closest('.delete-ivr-btn')) {
+            const btn = e.target.classList.contains('delete-ivr-btn') ? e.target : e.target.closest('.delete-ivr-btn');
+            deleteIVR(parseInt(btn.getAttribute('data-id')));
+        }
+
+        // Queue buttons
+        if (e.target.classList.contains('view-queue-btn') || e.target.closest('.view-queue-btn')) {
+            const btn = e.target.classList.contains('view-queue-btn') ? e.target : e.target.closest('.view-queue-btn');
+            viewQueue(parseInt(btn.getAttribute('data-id')));
+        }
+        if (e.target.classList.contains('edit-queue-btn') || e.target.closest('.edit-queue-btn')) {
+            const btn = e.target.classList.contains('edit-queue-btn') ? e.target : e.target.closest('.edit-queue-btn');
+            editQueue(parseInt(btn.getAttribute('data-id')));
+        }
+    });
+});

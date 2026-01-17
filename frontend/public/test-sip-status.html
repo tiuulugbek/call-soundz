@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SIP Status Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .status { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>SIP Status Test</h1>
+    
+    <div>
+        <button onclick="testSIPStatus()">Test SIP Status</button>
+        <button onclick="testTrunks()">Test Trunks</button>
+        <button onclick="testExtensions()">Test Extensions</button>
+        <button onclick="testAll()">Test All</button>
+    </div>
+    
+    <div id="results"></div>
+    
+    <script>
+        function getToken() {
+            return localStorage.getItem('authToken');
+        }
+        
+        async function testSIPStatus() {
+            const token = getToken();
+            if (!token) {
+                showResult('error', 'Token not found. Please login first.');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/v1/sip-status/server', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                showResult('success', 'SIP Server Status', data);
+            } catch (error) {
+                showResult('error', 'Error:', error.message);
+            }
+        }
+        
+        async function testTrunks() {
+            const token = getToken();
+            if (!token) {
+                showResult('error', 'Token not found. Please login first.');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/v1/sip-status/trunks', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                showResult('success', 'Trunk Status', data);
+            } catch (error) {
+                showResult('error', 'Error:', error.message);
+            }
+        }
+        
+        async function testExtensions() {
+            const token = getToken();
+            if (!token) {
+                showResult('error', 'Token not found. Please login first.');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/v1/sip-status/extensions', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                showResult('success', 'Extension Status', data);
+            } catch (error) {
+                showResult('error', 'Error:', error.message);
+            }
+        }
+        
+        async function testAll() {
+            await testSIPStatus();
+            await new Promise(r => setTimeout(r, 500));
+            await testTrunks();
+            await new Promise(r => setTimeout(r, 500));
+            await testExtensions();
+        }
+        
+        function showResult(type, title, data) {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.innerHTML = `
+                <h3>${title}</h3>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+            results.appendChild(div);
+        }
+        
+        // Auto test on load if token exists
+        window.addEventListener('load', () => {
+            if (getToken()) {
+                console.log('Token found, you can test SIP status');
+            } else {
+                console.log('No token found. Please login first at main page.');
+            }
+        });
+    </script>
+</body>
+</html>

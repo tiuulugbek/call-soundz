@@ -1,0 +1,178 @@
+const logger = require('../../utils/logger');
+const Call = require('../../database/models/Call');
+const Extension = require('../../database/models/Extension');
+
+class CallHandler {
+  async handleIncomingCall(invitation, route) {
+    try {
+      const callId = invitation.request.callId;
+      const from = invitation.request.from.uri.user;
+      const to = route.didNumber;
+
+      logger.info(`Handling incoming call: ${from} -> ${to}, Route: ${route.routeType}`);
+
+      // Create call record
+      const call = await Call.create({
+        callId: callId,
+        fromNumber: from,
+        toNumber: to,
+        didNumberId: route.didNumberId,
+        direction: 'inbound',
+        status: 'ringing',
+        startedAt: new Date()
+      });
+
+      // Route based on type
+      switch (route.routeType) {
+        case 'extension':
+          await this.routeToExtension(invitation, route.target, call);
+          break;
+        case 'ivr':
+          await this.routeToIVR(invitation, route.target, call);
+          break;
+        case 'queue':
+          await this.routeToQueue(invitation, route.target, call);
+          break;
+        case 'voicemail':
+          await this.routeToVoicemail(invitation, route.target, call);
+          break;
+        default:
+          logger.warn(`Unknown route type: ${route.routeType}`);
+          invitation.reject();
+      }
+    } catch (error) {
+      logger.error('Error handling incoming call:', error);
+      if (invitation) {
+        invitation.reject();
+      }
+    }
+  }
+
+  async routeToExtension(invitation, target, call) {
+    try {
+      logger.info(`Routing call to extension: ${target.username}`);
+
+      // Find extension's SIP endpoint
+      const extension = await Extension.findById(target.id);
+      if (!extension) {
+        throw new Error(`Extension ${target.id} not found`);
+      }
+
+      // Get extension's contact URI (from registrar)
+      const registrar = require('../core/registrar');
+      const contactUri = registrar.getExtensionContact(extension.username);
+
+      if (!contactUri) {
+        logger.warn(`Extension ${extension.username} not registered`);
+        // Reject or forward to voicemail
+        invitation.reject();
+        return;
+      }
+
+      // Create new INVITE to extension
+      // This is simplified - in production, you'd use SIP proxy or B2BUA
+      invitation.accept({
+        sessionDescriptionHandlerOptions: {
+          constraints: {
+            audio: true,
+            video: false
+          }
+        }
+      });
+
+      // Update call record
+      await Call.update(call.id, {
+        toExtensionId: target.id,
+        status: 'connected'
+      });
+
+      // Handle call events
+      invitation.stateChange.addListener((newState) => {
+        logger.info(`Call ${call.callId} state: ${newState}`);
+        if (newState === 'Established') {
+          Call.update(call.id, { status: 'answered', answeredAt: new Date() });
+        } else if (newState === 'Terminated') {
+          Call.update(call.id, { status: 'completed', endedAt: new Date() });
+        }
+      });
+
+    } catch (error) {
+      logger.error('Error routing to extension:', error);
+      invitation.reject();
+    }
+  }
+
+  async routeToIVR(invitation, target, call) {
+    try {
+      logger.info(`Routing call to IVR: ${target.name}`);
+      
+      // Accept call
+      invitation.accept({
+        sessionDescriptionHandlerOptions: {
+          constraints: {
+            audio: true,
+            video: false
+          }
+        }
+      });
+
+      // Play IVR menu
+      const ivrHandler = require('../features/ivr-handler');
+      await ivrHandler.playIVR(invitation, target, call);
+
+    } catch (error) {
+      logger.error('Error routing to IVR:', error);
+      invitation.reject();
+    }
+  }
+
+  async routeToQueue(invitation, target, call) {
+    try {
+      logger.info(`Routing call to queue: ${target.name}`);
+      
+      // Accept call
+      invitation.accept({
+        sessionDescriptionHandlerOptions: {
+          constraints: {
+            audio: true,
+            video: false
+          }
+        }
+      });
+
+      // Add to queue
+      const queueHandler = require('../features/queue-handler');
+      await queueHandler.addToQueue(invitation, target, call);
+
+    } catch (error) {
+      logger.error('Error routing to queue:', error);
+      invitation.reject();
+    }
+  }
+
+  async routeToVoicemail(invitation, target, call) {
+    try {
+      logger.info(`Routing call to voicemail: ${target.didNumber}`);
+      
+      // Accept call
+      invitation.accept({
+        sessionDescriptionHandlerOptions: {
+          constraints: {
+            audio: true,
+            video: false
+          }
+        }
+      });
+
+      // Play voicemail greeting and record
+      const voicemailHandler = require('../features/voicemail-handler');
+      await voicemailHandler.handleVoicemail(invitation, target, call);
+
+    } catch (error) {
+      logger.error('Error routing to voicemail:', error);
+      invitation.reject();
+    }
+  }
+}
+
+module.exports = new CallHandler();

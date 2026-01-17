@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PBX System - Admin Panel</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <!-- SIP.js for Web Phone -->
+    <script src="https://cdn.jsdelivr.net/npm/sip.js@0.21.2/dist/sip.min.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Login Page -->
+        <div id="login-page" class="page">
+            <div class="login-container">
+                <div class="login-box">
+                    <h1>PBX System</h1>
+                    <h2>call.soundz.uz</h2>
+                    <p style="color: #999; margin-bottom: 20px;">Admin Panel</p>
+                    <form id="login-form">
+                        <div class="form-group">
+                            <label for="username">Username</label>
+                            <input type="text" id="username" name="username" required autocomplete="username">
+                        </div>
+                        <div class="form-group">
+                            <label for="password">Password</label>
+                            <input type="password" id="password" name="password" required autocomplete="current-password">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Login</button>
+                        <div id="login-error" class="error-message"></div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard Page -->
+        <div id="dashboard-page" class="page hidden">
+            <nav class="navbar">
+                <div class="nav-brand">PBX System</div>
+                <div class="nav-user">
+                    <span id="user-name"></span>
+                    <button id="logout-btn" class="btn btn-sm">Logout</button>
+                </div>
+            </nav>
+
+            <div class="container">
+                <div class="sidebar">
+                        <ul class="menu">
+                        <li><a href="#" data-page="dashboard" class="menu-item active">📊 Dashboard</a></li>
+                        <li><a href="#" data-page="phone" class="menu-item">📞 Telefon</a></li>
+                        <li><a href="#" data-page="extensions" class="menu-item">📞 Extensions</a></li>
+                        <li><a href="#" data-page="calls" class="menu-item">📋 Calls</a></li>
+                        <li><a href="#" data-page="recordings" class="menu-item">🎙️ Recordings</a></li>
+                        <li><a href="#" data-page="ivr" class="menu-item">🔊 IVR</a></li>
+                        <li><a href="#" data-page="queues" class="menu-item">⏳ Queues</a></li>
+                        <li><a href="#" data-page="did-numbers" class="menu-item">📱 DID Numbers</a></li>
+                        <li><a href="#" data-page="stats" class="menu-item">📈 Statistics</a></li>
+                    </ul>
+                </div>
+
+                <div class="main-content">
+                    <!-- Dashboard Content -->
+                    <div id="dashboard-content" class="content-section">
+                        <h2>Dashboard</h2>
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <h3>Jami Qo'ng'iroqlar</h3>
+                                <p id="stat-total-calls" class="stat-value">-</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3>Faol Qo'ng'iroqlar</h3>
+                                <p id="stat-active-calls" class="stat-value">-</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3>Extensions</h3>
+                                <p id="stat-extensions" class="stat-value">-</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3>Online Extensions</h3>
+                                <p id="stat-online-extensions" class="stat-value">-</p>
+                            </div>
+                        </div>
+                        <div style="margin-top: 30px; padding: 20px; background: white; border-radius: 8px;">
+                            <h3 style="margin-bottom: 15px;">Tezkor Amallar</h3>
+                            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                                <button id="quick-add-extension-btn" class="btn btn-primary">+ Extension Qo'shish</button>
+                                <button id="quick-view-calls-btn" class="btn btn-sm">Qo'ng'iroqlarni Ko'rish</button>
+                                <button id="quick-view-extensions-btn" class="btn btn-sm">Extensions Ro'yxati</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Extensions Content -->
+                    <div id="extensions-content" class="content-section hidden">
+                        <div class="page-header">
+                            <h2>Extensions</h2>
+                            <button id="add-extension-btn" class="btn btn-primary">+ Extension Qo'shish</button>
+                        </div>
+                        <div id="extensions-list" class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Username</th>
+                                        <th>Display Name</th>
+                                        <th>Email</th>
+                                        <th>Holat</th>
+                                        <th>Amallar</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="extensions-table-body">
+                                    <tr><td colspan="5" style="text-align: center; padding: 20px;">Yuklanmoqda...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Calls Content -->
+                    <div id="calls-content" class="content-section hidden">
+                        <div class="page-header">
+                            <h2>Calls</h2>
+                            <button id="refresh-calls-btn" class="btn btn-sm">Yangilash</button>
+                        </div>
+                        <div id="calls-list" class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>From</th>
+                                        <th>To</th>
+                                        <th>Direction</th>
+                                        <th>Status</th>
+                                        <th>Duration</th>
+                                        <th>Started</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="calls-table-body">
+                                    <tr><td colspan="7">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Recordings Content -->
+                    <div id="recordings-content" class="content-section hidden">
+                        <div class="page-header">
+                            <h2>Recordings</h2>
+                            <button id="refresh-recordings-btn" class="btn btn-sm">Yangilash</button>
+                        </div>
+                        <div id="recordings-list" class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>File Name</th>
+                                        <th>Duration</th>
+                                        <th>Size</th>
+                                        <th>Created</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recordings-table-body">
+                                    <tr><td colspan="5">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- IVR Content -->
+                    <div id="ivr-content" class="content-section hidden">
+                        <div class="page-header">
+                            <h2>IVR Menus</h2>
+                            <button id="add-ivr-btn" class="btn btn-primary">+ IVR Qo'shish</button>
+                        </div>
+                        <div id="ivr-list" class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Description</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ivr-table-body">
+                                    <tr><td colspan="4">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Queues Content -->
+                    <div id="queues-content" class="content-section hidden">
+                        <div class="page-header">
+                            <h2>Call Queues</h2>
+                            <button id="add-queue-btn" class="btn btn-primary">+ Queue Qo'shish</button>
+                        </div>
+                        <div id="queues-list" class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Description</th>
+                                        <th>Strategy</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="queues-table-body">
+                                    <tr><td colspan="5">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- DID Numbers Page -->
+                    <div id="did-numbers-content" class="content-section hidden">
+                        <div class="page-header">
+                            <h2>DID Numbers (Tashqi Raqamlar)</h2>
+                            <button id="add-did-btn" class="btn btn-primary">+ DID Qo'shish</button>
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Raqam</th>
+                                        <th>Provider</th>
+                                        <th>Trunk Username</th>
+                                        <th>Route Type</th>
+                                        <th>Route Target</th>
+                                        <th>Holat</th>
+                                        <th>Amallar</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="did-numbers-table-body">
+                                    <tr><td colspan="7" style="text-align: center; padding: 20px;">Yuklanmoqda...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Phone/Calls Content -->
+                    <div id="phone-content" class="content-section hidden">
+                        <div class="page-header">
+                            <h2>Telefon (Web Phone)</h2>
+                        </div>
+                        <div class="phone-container" style="padding: 20px; max-width: 600px; margin: 0 auto;">
+                            <!-- Extension Selection -->
+                            <div class="form-group" style="margin-bottom: 20px;">
+                                <label for="phone-extension">Extension <span class="required">*</span></label>
+                                <select id="phone-extension" class="form-control" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option value="">Tanlang...</option>
+                                </select>
+                                <small>Telefon qilish uchun extension tanlang</small>
+                            </div>
+
+                            <!-- Connection Status -->
+                            <div id="phone-status" style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 4px; text-align: center;">
+                                <div id="phone-status-text" style="font-weight: bold; color: #666;">Extension tanlang</div>
+                                <div id="phone-status-details" style="font-size: 12px; color: #999; margin-top: 5px;"></div>
+                            </div>
+
+                            <!-- Dial Pad -->
+                            <div class="dial-pad" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px;">
+                                <button class="dial-btn" data-number="1" style="padding: 20px; font-size: 24px; border: 1px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">1</button>
+                                <button class="dial-btn" data-number="2" style="padding: 20px; font-size: 24px; border: 1px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">2</button>
+                                <button class="dial-btn" data-number="3" style="padding: 20px; font-size: 24px; border: 1px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">3</button>
+                                <button class="dial-btn" data-number="4" style="padding: 20px; font-size: 24px; border: 1px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">4</button>
+                                <button class="dial-btn" data-number="5" style="padding: 20px; font-size: 24px; border: 1px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">5</button>
+                                <button class="dial-btn" data-number="6" style="padding: 20px; font-size: 24px; border: 1px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">6</button>
+                                <button class="dial-btn" data-number="7" style="padding: 20px; font-size: 24px; border: 1px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">7</button>
+                                <button class="dial-btn" data-number="8" style="padding: 20px; font-size: 24px; border: 1px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">8</button>
+                                <button class="dial-btn" data-number="9" style="padding: 20px; font-size: 24px; border: 1px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">9</button>
+                                <button class="dial-btn" data-number="*" style="padding: 20px; font-size: 24px; border: 1px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">*</button>
+                                <button class="dial-btn" data-number="0" style="padding: 20px; font-size: 24px; border: 1px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">0</button>
+                                <button class="dial-btn" data-number="#" style="padding: 20px; font-size: 24px; border: 1px solid #ddd; border-radius: 8px; background: white; cursor: pointer;">#</button>
+                            </div>
+
+                            <!-- Phone Number Input -->
+                            <div class="form-group" style="margin-bottom: 20px;">
+                                <label for="phone-number">Telefon Raqami</label>
+                                <input type="text" id="phone-number" class="form-control" placeholder="Masalan: 1001 yoki 998901234567" 
+                                       style="width: 100%; padding: 15px; font-size: 18px; border: 1px solid #ddd; border-radius: 4px; text-align: center;">
+                            </div>
+
+                            <!-- Call Actions -->
+                            <div class="call-actions" style="display: flex; gap: 10px; justify-content: center;">
+                                <button id="phone-call-btn" class="btn btn-success" style="padding: 15px 30px; font-size: 16px; flex: 1; max-width: 200px;">
+                                    📞 Qo'ng'iroq Qilish
+                                </button>
+                                <button id="phone-answer-btn" class="btn btn-success hidden" style="padding: 15px 30px; font-size: 16px; flex: 1; max-width: 200px;">
+                                    ✅ Javob Berish
+                                </button>
+                                <button id="phone-hangup-btn" class="btn btn-danger hidden" style="padding: 15px 30px; font-size: 16px; flex: 1; max-width: 200px;">
+                                    📴 Qo'ng'iroqni Yakunlash
+                                </button>
+                                <button id="phone-clear-btn" class="btn btn-secondary" style="padding: 15px 30px; font-size: 16px;">
+                                    🗑️ Tozalash
+                                </button>
+                            </div>
+
+                            <!-- Active Call Info -->
+                            <div id="active-call-info" class="hidden" style="margin-top: 20px; padding: 15px; background: #e8f5e9; border-radius: 4px; text-align: center;">
+                                <div id="call-status-text" style="font-weight: bold; color: #2e7d32;"></div>
+                                <div id="call-duration" style="font-size: 24px; color: #2e7d32; margin-top: 10px;">00:00</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Statistics Content -->
+                    <div id="stats-content" class="content-section hidden">
+                        <h2>Statistics</h2>
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <h3>Total Calls</h3>
+                                <p id="stats-total-calls" class="stat-value">-</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3>Today Calls</h3>
+                                <p id="stats-today-calls" class="stat-value">-</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3>Today Duration</h3>
+                                <p id="stats-today-duration" class="stat-value">-</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Extension Modal -->
+    <div id="extension-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="extension-modal-title">Extension Qo'shish</h2>
+                <button class="modal-close" id="extension-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="extension-form">
+                    <input type="hidden" id="extension-id" name="id">
+                    
+                    <div class="form-group">
+                        <label for="extension-username">Username <span class="required">*</span></label>
+                        <input type="text" id="extension-username" name="username" required 
+                               placeholder="Masalan: 1001" pattern="[0-9A-Za-z]{3,50}">
+                        <small>3-50 belgi, faqat raqam va harflar</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="extension-password">Parol <span class="required">*</span></label>
+                        <input type="password" id="extension-password" name="password" required 
+                               placeholder="Kamida 6 belgi" minlength="6">
+                        <small>Kamida 6 belgi</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="extension-display-name">Display Name</label>
+                        <input type="text" id="extension-display-name" name="displayName" 
+                               placeholder="Masalan: John Doe">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="extension-email">Email</label>
+                        <input type="email" id="extension-email" name="email" 
+                               placeholder="user@example.com">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="extension-enabled" name="enabled" checked>
+                            Extension faol
+                        </label>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" id="extension-modal-cancel">Bekor qilish</button>
+                        <button type="submit" class="btn btn-primary" id="extension-modal-submit">Saqlash</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- DID Number Modal -->
+    <div id="did-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2 id="did-modal-title">DID Qo'shish</h2>
+                <button class="modal-close" id="did-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="did-form">
+                    <input type="hidden" id="did-id" name="id">
+                    
+                    <div class="form-group">
+                        <label for="did-number">DID Raqam <span class="required">*</span></label>
+                        <input type="text" id="did-number" name="number" required 
+                               placeholder="Masalan: 998785553322" pattern="[0-9+]+">
+                        <small>Faqat raqamlar va + belgisi</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="did-provider">Provider</label>
+                        <input type="text" id="did-provider" name="provider" 
+                               placeholder="bell.uz" value="bell.uz">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="did-trunk-username">Trunk Username</label>
+                        <input type="text" id="did-trunk-username" name="trunkUsername" 
+                               placeholder="Masalan: 998785553322">
+                        <small>Agar bo'sh qoldirilsa, DID raqam ishlatiladi</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="did-trunk-password">Trunk Password <span class="required">*</span></label>
+                        <input type="password" id="did-trunk-password" name="trunkPassword" required 
+                               placeholder="Trunk password">
+                        <small>Bell.uz trunk uchun password</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="did-route-type">Route Type <span class="required">*</span></label>
+                        <select id="did-route-type" name="routeType" required>
+                            <option value="">Tanlang...</option>
+                            <option value="extension">Extension</option>
+                            <option value="ivr">IVR</option>
+                            <option value="queue">Queue</option>
+                            <option value="voicemail">Voicemail</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="did-route-target">Route Target <span class="required">*</span></label>
+                        <select id="did-route-target" name="routeTargetId" required>
+                            <option value="">Route Type'ni tanlang...</option>
+                        </select>
+                        <small>Route Type'ni tanlang, keyin Route Target ko'rsatiladi</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="did-enabled" name="enabled" checked>
+                            DID faol
+                        </label>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" id="did-modal-cancel">Bekor qilish</button>
+                        <button type="submit" class="btn btn-primary" id="did-modal-submit">Saqlash</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>

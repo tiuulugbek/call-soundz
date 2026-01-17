@@ -1,0 +1,181 @@
+const { UserAgent, Registerer, Inviter } = require('sip.js');
+const { SessionDescriptionHandler } = require('sip.js/lib/platform/web');
+const config = require('../../config/config');
+const logger = require('../../utils/logger');
+const DIDNumber = require('../../database/models/DIDNumber');
+
+class SIPTrunkManager {
+  constructor() {
+    this.userAgent = null;
+    this.registerer = null;
+    this.trunks = new Map(); // DID number -> trunk connection
+    this.activeCalls = new Map(); // call-id -> call session
+  }
+
+  async initialize() {
+    try {
+      // Load all active DID numbers from database
+      const didNumbers = await DIDNumber.findAll({ enabled: true });
+      
+      for (const did of didNumbers) {
+        await this.registerTrunk(did);
+      }
+      
+      logger.info(`SIP Trunk Manager initialized with ${didNumbers.length} trunks`);
+    } catch (error) {
+      logger.error('Error initializing SIP Trunk Manager:', error);
+      throw error;
+    }
+  }
+
+  async registerTrunk(didNumber) {
+    try {
+      const trunkConfig = {
+        uri: `sip:${didNumber.trunkUsername}@${didNumber.provider}`,
+        transportOptions: {
+          server: `sip:${didNumber.provider}:${config.sip.trunk.port}`,
+          wsServers: config.sip.trunk.transport === 'ws' ? [`wss://${didNumber.provider}`] : undefined
+        },
+        authorizationUsername: didNumber.trunkUsername,
+        authorizationPassword: didNumber.trunkPassword,
+        displayName: didNumber.number,
+        logLevel: 'warn'
+      };
+
+      const userAgent = new UserAgent(trunkConfig);
+      
+      // Handle incoming INVITE
+      userAgent.delegate = {
+        onInvite: (invitation) => {
+          this.handleIncomingCall(invitation, didNumber);
+        }
+      };
+
+      // Register
+      const registerer = new Registerer(userAgent);
+      
+      registerer.stateChange.addListener((newState) => {
+        logger.info(`Trunk ${didNumber.number} registration state: ${newState}`);
+        if (newState === 'Registered') {
+          logger.info(`✅ Trunk ${didNumber.number} registered successfully`);
+        } else if (newState === 'Unregistered') {
+          logger.warn(`⚠️ Trunk ${didNumber.number} unregistered`);
+        }
+      });
+
+      await registerer.register();
+      
+      this.trunks.set(didNumber.id, {
+        didNumber,
+        userAgent,
+        registerer,
+        registered: false
+      });
+
+      logger.info(`Trunk ${didNumber.number} registration initiated`);
+    } catch (error) {
+      logger.error(`Error registering trunk ${didNumber.number}:`, error);
+      throw error;
+    }
+  }
+
+  async handleIncomingCall(invitation, didNumber) {
+    try {
+      const callId = invitation.request.callId;
+      logger.info(`Incoming call to DID ${didNumber.number}, Call-ID: ${callId}`);
+
+      // Get routing information
+      const router = require('../routing/did-router');
+      const route = await router.routeDID(didNumber.id);
+
+      if (!route) {
+        logger.warn(`No route found for DID ${didNumber.number}`);
+        invitation.reject();
+        return;
+      }
+
+      // Store call session
+      this.activeCalls.set(callId, {
+        invitation,
+        didNumber,
+        route,
+        state: 'ringing'
+      });
+
+      // Route call based on type
+      const callHandler = require('../handlers/call-handler');
+      await callHandler.handleIncomingCall(invitation, route);
+
+    } catch (error) {
+      logger.error('Error handling incoming call:', error);
+      if (invitation) {
+        invitation.reject();
+      }
+    }
+  }
+
+  async makeOutboundCall(didNumberId, destination, callerId) {
+    try {
+      const trunk = this.trunks.get(didNumberId);
+      if (!trunk || !trunk.registered) {
+        throw new Error(`Trunk ${didNumberId} not registered`);
+      }
+
+      const targetUri = `sip:${destination}@${trunk.didNumber.provider}`;
+      const inviter = new Inviter(trunk.userAgent, targetUri, {
+        fromDisplayName: callerId || trunk.didNumber.number
+      });
+
+      await inviter.invite();
+      
+      logger.info(`Outbound call initiated: ${destination} via DID ${trunk.didNumber.number}`);
+      return inviter;
+    } catch (error) {
+      logger.error('Error making outbound call:', error);
+      throw error;
+    }
+  }
+
+  async unregisterTrunk(didNumberId) {
+    try {
+      const trunk = this.trunks.get(didNumberId);
+      if (trunk && trunk.registerer) {
+        await trunk.registerer.unregister();
+        await trunk.userAgent.stop();
+        this.trunks.delete(didNumberId);
+        logger.info(`Trunk ${didNumberId} unregistered`);
+      }
+    } catch (error) {
+      logger.error(`Error unregistering trunk ${didNumberId}:`, error);
+    }
+  }
+
+  async reloadTrunks() {
+    try {
+      // Unregister all existing trunks
+      for (const [id] of this.trunks) {
+        await this.unregisterTrunk(id);
+      }
+
+      // Reload from database
+      await this.initialize();
+    } catch (error) {
+      logger.error('Error reloading trunks:', error);
+      throw error;
+    }
+  }
+
+  getTrunkStatus(didNumberId) {
+    const trunk = this.trunks.get(didNumberId);
+    if (!trunk) {
+      return { registered: false, error: 'Trunk not found' };
+    }
+    return {
+      registered: trunk.registered,
+      didNumber: trunk.didNumber.number,
+      provider: trunk.didNumber.provider
+    };
+  }
+}
+
+module.exports = new SIPTrunkManager();

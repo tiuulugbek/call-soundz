@@ -1,0 +1,104 @@
+# /etc/nginx/sites-available/call.soundz.uz
+# SSL bilan to'liq konfiguratsiya
+
+# HTTP dan HTTPS ga redirect
+server {
+    listen 80;
+    server_name call.soundz.uz;
+    
+    # Let's Encrypt uchun
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+    
+    # Boshqa barcha so'rovlar HTTPS ga redirect
+    location / {
+        return 301 https://$server_name$request_uri;
+    }
+}
+
+# HTTPS server
+server {
+    listen 443 ssl http2;
+    server_name call.soundz.uz;
+    
+    # SSL sertifikatlari (Let's Encrypt)
+    ssl_certificate /etc/letsencrypt/live/call.soundz.uz/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/call.soundz.uz/privkey.pem;
+    
+    # SSL sozlamalari
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+    
+    # Security headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    
+    # Web Dashboard
+    location / {
+        proxy_pass http://localhost:3005;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+    
+    # WebSocket support
+    location /socket.io/ {
+        proxy_pass http://localhost:3005;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket timeouts
+        proxy_connect_timeout 7d;
+        proxy_send_timeout 7d;
+        proxy_read_timeout 7d;
+    }
+    
+    # API
+    location /api/ {
+        proxy_pass http://localhost:3005;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # API timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+    
+    # Health check
+    location /health {
+        proxy_pass http://localhost:3005;
+        access_log off;
+    }
+    
+    # Max body size (file uploads uchun)
+    client_max_body_size 50M;
+}
+
+# Eslatma: 
+# 1. SSL sertifikatini olish: sudo certbot --nginx -d call.soundz.uz
+# 2. Certbot avtomatik ravishda nginx konfiguratsiyasini yangilaydi
+# 3. SSL sertifikat avtomatik yangilanadi (cron job orqali)
