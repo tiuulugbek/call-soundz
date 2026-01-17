@@ -36,8 +36,15 @@ To'liq funksiyali PBX tizimi Bell.uz SIP trunk integratsiyasi bilan.
 
 ```bash
 cd /var/www
-git clone <repository-url> call.soundz.uz
+git clone https://github.com/tiuulugbek/call-soundz.git call.soundz.uz
 cd call.soundz.uz
+```
+
+Yoki lokal o'rnatish uchun:
+
+```bash
+git clone https://github.com/tiuulugbek/call-soundz.git
+cd call-soundz
 ```
 
 ### 2. Dependencies o'rnatish
