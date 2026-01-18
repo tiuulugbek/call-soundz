@@ -13,7 +13,7 @@ module.exports = {
       port: parseInt(process.env.SIP_PORT) || 5060,
       trunkPort: parseInt(process.env.SIP_TRUNK_PORT) || 5061,
       transport: process.env.SIP_TRANSPORT || 'udp',
-      domain: process.env.SIP_DOMAIN || 'call.soundz.uz'
+      domain: process.env.SIP_DOMAIN || 'c.soundz.uz'
     },
     
     trunk: {

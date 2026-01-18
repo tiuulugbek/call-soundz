@@ -1,159 +1,197 @@
-# MicroSIP Ulanish Qo'llanmasi
+# MicroSIP Sozlamalari - Tashqaridan Ulanish
 
-## MicroSIP Sozlamalari
+Bu yo'riqnoma MicroSIP yoki boshqa SIP klient dasturlar orqali tashqaridan PBX server ga ulanish uchun.
 
-### 1. Account Qo'shish
+## 📍 Server Ma'lumotlari
 
-1. **MicroSIP'ni oching**
-2. **Settings → Accounts** yoki **Ctrl+A**
-3. **Add** tugmasini bosing
+- **SIP Server IP**: `185.137.152.229`
+- **SIP Port**: `5060` (UDP)
+- **SIP Domain**: `185.137.152.229` (yoki `call.soundz.uz` agar domain bog'langan bo'lsa)
+- **RTP Portlar**: `10000-20000` (UDP)
+- **Web Dashboard**: http://185.137.152.229:3005
 
-### 2. Account Ma'lumotlari
+## 🔧 MicroSIP Sozlamalari
 
-Quyidagi ma'lumotlarni kiriting:
+### 1. MicroSIP ni O'rnatish
 
-```
-Account Name: call.soundz.uz (yoki istalgan nom)
-Domain: call.soundz.uz
-Username: [Extension username, masalan: 1001]
-Password: [Extension password]
-Display Name: [Ixtiyoriy, masalan: John Doe]
-```
+1. MicroSIP ni yuklab oling: https://www.microsip.org/
+2. O'rnatish va ishga tushirish
 
-### 3. Advanced Sozlamalar
+### 2. Yangi Account Qo'shish
 
-**Settings → Accounts → [Account] → Advanced** ga o'ting:
+MicroSIP ochilganda quyidagi sozlamalarni kiriting:
 
-```
-✅ Register: Enabled (checked)
-✅ Publish: Enabled (checked)
-✅ Use SRV: Disabled (unchecked)
-✅ Use STUN: Disabled (unchecked) ⚠️ MUHIM!
-✅ Use ICE: Disabled (unchecked)
-✅ Use RTP keep-alive: Enabled (checked)
-✅ Use SIP keep-alive: Enabled (checked)
-```
+#### Account Tab:
+- **User**: Extension username (masalan: `1001`)
+- **Domain**: `185.137.152.229` (yoki `call.soundz.uz`)
+- **Password**: Extension password
+- **Display name**: Extension display name (ixtiyoriy)
 
-### 4. Network Sozlamalari
+#### Network Tab:
+- **Outbound proxy**: Bo'sh qoldiring yoki `185.137.152.229:5060`
+- **STUN server**: Bo'sh qoldiring (yoki `stun:stun.l.google.com:19302` NAT uchun)
+- **Transport**: UDP
 
-**Settings → Network** ga o'ting:
+#### Audio Tab:
+- **Sound device**: Avtomatik tanlash yoki o'zingiz tanlagan
+- **Echo cancellation**: ✅ Yoqilgan
+- **Gain control**: ✅ Yoqilgan
 
-```
-Local port: 5060 (yoki boshqa port, agar 5060 band bo'lsa)
-STUN server: Bo'sh qoldiring
-RTP port range: 10000-20000 (default)
-```
+#### Codecs Tab:
+- ✅ **PCMU (G.711 µ-law)** - Eng yaxshi sifat
+- ✅ **PCMA (G.711 A-law)** - Eng yaxshi sifat
+- ✅ **GSM** - Past trafik
+- ✅ **G.729** - Eng past trafik (agar litsenziya bo'lsa)
 
-### 5. Proxy Server (Agar kerak bo'lsa)
-
-**Settings → Accounts → [Account] → Proxy**:
+### 3. To'liq Sozlamalar (Settings → Accounts → Add/Edit)
 
 ```
-Proxy server: Bo'sh qoldiring (yoki call.soundz.uz:5060)
+Account Settings:
+├── Account
+│   ├── User: 1001
+│   ├── Domain: 185.137.152.229
+│   ├── Password: [extension password]
+│   └── Display name: John Doe
+│
+├── Network
+│   ├── Outbound proxy: 
+│   ├── STUN server: 
+│   └── Transport: UDP
+│
+└── Advanced
+    ├── Register: ✅ Enabled
+    ├── Register expiration: 3600
+    └── Use outbound proxy: ❌ Disabled
 ```
 
-## Muhim Eslatmalar
+## 📱 Boshqa SIP Klientlar uchun
 
-### ⚠️ STUN O'chirilishi Kerak
+### Zoiper:
+1. Settings → Accounts → Add SIP Account
+2. Account Details:
+   - Domain/Host: `185.137.152.229`
+   - Username: Extension username
+   - Password: Extension password
+   - Display Name: Optional
 
-MicroSIP'da **STUN o'chirilgan** bo'lishi kerak, aks holda timeout xatosi bo'lishi mumkin.
+### X-Lite:
+1. Account → SIP Account Settings
+2. User ID: `1001@185.137.152.229`
+3. Password: Extension password
+4. Domain: `185.137.152.229`
+5. Port: `5060`
 
-### ✅ Keep-Alive Yoqilishi Kerak
+### Softphone (Web):
+1. Brauzerda: http://185.137.152.229:3005
+2. Login qiling
+3. Web Phone yoki SIP Settings bo'limiga o'ting
 
-**SIP keep-alive** va **RTP keep-alive** yoqilgan bo'lishi kerak.
+## 🔐 Extension Yaratish (Agar yo'q bo'lsa)
 
-### 🔧 Port Muammosi
-
-Agar 5060 port band bo'lsa, boshqa port ishlatishingiz mumkin (masalan: 5061, 5062).
-
-## Test Qilish
-
-1. **Account'ni saqlang**
-2. **Register** tugmasini bosing
-3. **Status** ko'rinishini kuzating:
-   - ✅ **Registered** - muvaffaqiyatli ulanish
-   - ❌ **Failed** - xato, loglarni tekshiring
-   - ⏳ **Registering...** - ulanish jarayonida
-
-## Xatolar va Yechimlar
-
-### Timeout Xatosi
-
-**Muammo:** "Request Timeout (408)" yoki "DNS timeout (503)"
-
-**Yechim:**
-1. STUN o'chirilganligini tekshiring
-2. Firewall'da 5060/UDP port ochiqligini tekshiring
-3. Server loglarini tekshiring: `pm2 logs pbx-system | grep "[SIP]"`
-
-### 401 Unauthorized
-
-**Muammo:** "401 Unauthorized"
-
-**Yechim:**
-1. Username va Password to'g'riligini tekshiring
-2. Extension password'ni qayta o'rnating (admin paneldan)
-3. Account'ni qayta yarating
-
-### 404 Not Found
-
-**Muammo:** "404 Not Found"
-
-**Yechim:**
-1. Extension mavjudligini tekshiring
-2. Extension enabled bo'lishi kerak
-3. Username to'g'riligini tekshiring
-
-### DNS Xatosi
-
-**Muammo:** "DNS timeout" yoki "Failed to resolve"
-
-**Yechim:**
-1. Domain to'g'riligini tekshiring: `call.soundz.uz`
-2. DNS resolution'ni tekshiring: `nslookup call.soundz.uz`
-3. Proxy server bo'sh bo'lishi kerak (yoki to'g'ri)
-
-## Server Loglarini Kuzatish
-
-Real-time loglarni kuzatish:
+### API orqali:
 
 ```bash
-pm2 logs pbx-system --lines 50 | grep "\[SIP\]"
+# Login
+curl -X POST http://185.137.152.229:3005/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
+
+# Token oling (response dan)
+
+# Extension yaratish
+curl -X POST http://185.137.152.229:3005/api/v1/extensions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "username": "1001",
+    "password": "secure123",
+    "displayName": "John Doe"
+  }'
 ```
 
-Kutilyotgan natijalar:
-- `[SIP] Received message from...` - Xabar kelyapti ✅
-- `[SIP] Processing REGISTER...` - REGISTER qayta ishlanmoqda ✅
-- `[SIP] Sending 401 challenge...` - 401 javob yuborilmoqda ✅
-- `[SIP] Response sent successfully...` - Javob yuborildi ✅
+### Web Dashboard orqali:
+1. http://185.137.152.229:3005 ni oching
+2. Login: `admin` / `admin123`
+3. Extensions → Add New Extension
+4. Username, Password va Display Name kiriting
+5. Save
 
-## Qo'shimcha Ma'lumotlar
+## 🔥 Firewall Sozlamalari
 
-### Extension Yaratish
+Agar tashqaridan ulanayotgan bo'lsangiz, Windows Firewall da quyidagi portlarni oching:
 
-1. Admin panelga kiring: https://call.soundz.uz
-2. **Extensions** → **+ Extension Qo'shish**
-3. Username va Password kiriting
-4. Extension yaratilgandan keyin SIP ma'lumotlari ko'rsatiladi
+```powershell
+# Administrator huquqlari bilan
+.\setup-firewall.ps1
+```
 
-### Password Qayta O'rnatish
+Yoki qo'lda:
+```powershell
+New-NetFirewallRule -DisplayName "PBX SIP" -Direction Inbound -LocalPort 5060 -Protocol UDP -Action Allow
+New-NetFirewallRule -DisplayName "PBX RTP" -Direction Inbound -LocalPort 10000-20000 -Protocol UDP -Action Allow
+New-NetFirewallRule -DisplayName "PBX HTTP" -Direction Inbound -LocalPort 3005 -Protocol TCP -Action Allow
+```
 
-1. Admin panel → **Extensions**
-2. Extension'ni tanlang
-3. **✏️ Tahrirlash** tugmasini bosing
-4. Password'ni yangilang
-5. **Saqlash** tugmasini bosing
+## ✅ Ulanishni Tekshirish
 
-### Extension Status
+### 1. MicroSIP da Status:
+- ✅ "Registered" ko'rsatgich yashil bo'lishi kerak
+- ❌ "Not registered" bo'lsa, parol yoki server manzilini tekshiring
 
-1. Admin panel → **Extensions**
-2. Extension'ni tanlang
-3. **👁️ Ko'rish** tugmasini bosing
-4. Online/Offline holatini ko'ring
+### 2. Server da Extension Status:
+```bash
+# API orqali
+curl http://185.137.152.229:3005/api/v1/extensions/1001/status \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
 
-## Aloqa
+### 3. Test Qo'ng'iroq:
+- MicroSIP dan extension raqamini terib qo'ng'iroq qiling
+- Masalan: `1002` yoki `1003` ga qo'ng'iroq
 
-Agar muammo davom etsa:
-1. Server loglarini yuboring
-2. MicroSIP sozlamalarini screenshot qiling
-3. Xato xabarlarini yuboring
+## 🌐 Domain Sozlash (Opsional)
+
+Agar `call.soundz.uz` domain ishlatmoqchi bo'lsangiz:
+
+### DNS Sozlamalari:
+1. DNS provayderingizga kiriting
+2. Yangi A record yarating:
+   - **Type**: A
+   - **Name**: `call` (yoki `@`)
+   - **Value**: `185.137.152.229`
+   - **TTL**: 3600
+
+3. .env faylida:
+   ```
+   SIP_DOMAIN=call.soundz.uz
+   ```
+
+4. Server ni qayta ishga tushiring
+
+### MicroSIP da:
+- **Domain**: `call.soundz.uz` (IP o'rniga)
+
+## ⚠️ Muammolarni Hal Qilish
+
+### "Not registered" xatosi:
+- ✅ Password to'g'ri ekanligini tekshiring
+- ✅ Server IP manzilini tekshiring: `185.137.152.229:5060`
+- ✅ Firewall da 5060/UDP port ochilganligini tekshiring
+- ✅ Server ishlayaptimi? `netstat -ano | findstr :5060`
+
+### Qo'ng'iroq qilmayapti:
+- ✅ RTP portlar (10000-20000) firewall da ochilganmi?
+- ✅ NAT traversal sozlamalarini tekshiring
+- ✅ STUN server ishlatish (masalan: `stun:stun.l.google.com:19302`)
+
+### Ovoz yo'q:
+- ✅ Audio device to'g'ri tanlanganmi?
+- ✅ Microphone va Speaker ishlayaptimi?
+- ✅ Codec sozlamalarini tekshiring (PCMU/PCMA ishlatish tavsiya)
+
+## 📞 Qo'llab-quvvatlash
+
+Muammo bo'lsa:
+- Server loglari: `logs/combined.log`
+- API test: http://185.137.152.229:3005/api/v1
+- Web Dashboard: http://185.137.152.229:3005

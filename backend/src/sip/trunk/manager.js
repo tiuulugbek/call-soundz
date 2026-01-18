@@ -10,6 +10,7 @@ class SIPTrunkManager {
     this.trunks = new Map(); // DID number -> trunk info
     this.activeCalls = new Map(); // call-id -> call session
     this.registrations = new Map(); // trunk-id -> registration state
+    this.pendingRegistrations = new Map(); // Call-ID -> { didNumber, cseq, branch, fromTag, toTag, originalRinfo }
   }
 
   async initialize() {
@@ -71,7 +72,7 @@ class SIPTrunkManager {
     }
   }
 
-  async sendRegister(didNumber) {
+  async sendRegister(didNumber, withAuth = false, authHeader = null) {
     try {
       const trunkServer = didNumber.provider || config.sip.trunk.server;
       const trunkPort = config.sip.trunk.port || 5060;
@@ -79,13 +80,13 @@ class SIPTrunkManager {
       // Get server IP (simplified - in production use DNS lookup)
       const serverAddress = trunkServer;
       
-      const registerRequest = this.buildRegisterRequest(didNumber, trunkServer);
+      const registerRequest = this.buildRegisterRequest(didNumber, trunkServer, withAuth, authHeader);
       
       this.socket.send(registerRequest, trunkPort, serverAddress, (err) => {
         if (err) {
           logger.error(`Error sending REGISTER for ${didNumber.number}:`, err);
         } else {
-          logger.info(`REGISTER sent for DID ${didNumber.number}`);
+          logger.info(`REGISTER sent for DID ${didNumber.number}${withAuth ? ' (with auth)' : ''}`);
         }
       });
     } catch (error) {
@@ -93,7 +94,7 @@ class SIPTrunkManager {
     }
   }
 
-  buildRegisterRequest(didNumber, server) {
+  buildRegisterRequest(didNumber, server, withAuth = false, authHeader = null) {
     const callId = this.generateCallId();
     const branch = this.generateBranch();
     const cseq = Math.floor(Math.random() * 10000);
@@ -101,7 +102,19 @@ class SIPTrunkManager {
     const fromTag = this.generateTag();
     const toTag = this.generateTag();
 
-    const request = `REGISTER sip:${server} SIP/2.0\r
+    // Store registration info for response handling
+    if (!withAuth) {
+      this.pendingRegistrations.set(callId, {
+        didNumber,
+        cseq,
+        branch,
+        fromTag,
+        toTag,
+        server
+      });
+    }
+
+    let request = `REGISTER sip:${server} SIP/2.0\r
 Via: SIP/2.0/UDP ${config.sip.server.domain}:${config.sip.server.port};branch=${branch}\r
 Max-Forwards: 70\r
 From: <sip:${didNumber.trunkUsername}@${server}>;tag=${fromTag}\r
@@ -110,7 +123,13 @@ Call-ID: ${callId}\r
 CSeq: ${cseq} REGISTER\r
 Contact: <sip:${didNumber.trunkUsername}@${config.sip.server.domain}:${config.sip.server.port}>\r
 Expires: 3600\r
-Content-Length: 0\r
+`;
+
+    if (withAuth && authHeader) {
+      request += `Authorization: ${authHeader}\r\n`;
+    }
+
+    request += `Content-Length: 0\r
 \r
 `;
 
@@ -139,24 +158,118 @@ Content-Length: 0\r
   }
 
   async handleResponse(message, rinfo) {
-    const lines = message.split('\r\n');
-    const statusLine = lines[0];
-    const statusCode = parseInt(statusLine.split(' ')[1]);
+    try {
+      const lines = message.split('\r\n');
+      const statusLine = lines[0];
+      const statusCode = parseInt(statusLine.split(' ')[1]);
+      const parsed = parseSipMessage(message);
+      const callId = parsed.headers['Call-ID'];
 
-    if (statusCode >= 200 && statusCode < 300) {
-      // Success response
-      if (message.includes('REGISTER')) {
-        logger.info('✅ Trunk registration successful');
-        // Extract contact and expires from response
-        // Update registration state
+      if (statusCode >= 200 && statusCode < 300) {
+        // Success response
+        if (message.includes('REGISTER')) {
+          logger.info(`✅ Trunk registration successful for Call-ID: ${callId}`);
+          
+          // Extract contact and expires from response
+          const contact = parsed.headers.Contact || parsed.headers.contact;
+          const expires = this.extractExpires(message);
+          
+          // Find DID by Call-ID
+          const pendingReg = this.pendingRegistrations.get(callId);
+          if (pendingReg) {
+            const trunkInfo = this.trunks.get(pendingReg.didNumber.id);
+            if (trunkInfo) {
+              trunkInfo.registered = true;
+              trunkInfo.contactUri = contact;
+              trunkInfo.expiresAt = Date.now() + (expires * 1000);
+            }
+            this.pendingRegistrations.delete(callId);
+          }
+        }
+      } else if (statusCode === 401 || statusCode === 407) {
+        // Authentication required - handle digest authentication
+        logger.info(`Authentication required (${statusCode}) for Call-ID: ${callId}`);
+        
+        const pendingReg = this.pendingRegistrations.get(callId);
+        if (pendingReg) {
+          const didNumber = pendingReg.didNumber;
+          const wwwAuth = parsed.headers['WWW-Authenticate'] || parsed.headers['Proxy-Authenticate'];
+          
+          if (wwwAuth && didNumber.trunkPassword) {
+            // Parse WWW-Authenticate header
+            const authParams = this.parseAuthHeader(wwwAuth);
+            
+            // Build digest response
+            const authHeader = this.buildAuthHeader(didNumber, pendingReg, authParams);
+            
+            // Send authenticated REGISTER
+            await this.sendRegister(didNumber, true, authHeader);
+            
+            logger.info(`Sent authenticated REGISTER for DID ${didNumber.number}`);
+          } else {
+            logger.error(`Cannot authenticate: missing WWW-Authenticate or password for DID ${didNumber.number}`);
+          }
+        } else {
+          logger.warn(`No pending registration found for Call-ID: ${callId}`);
+        }
+      } else {
+        logger.warn(`Registration failed with status ${statusCode} for Call-ID: ${callId}`);
+        
+        // Clean up pending registration
+        if (callId) {
+          this.pendingRegistrations.delete(callId);
+        }
       }
-    } else if (statusCode === 401 || statusCode === 407) {
-      // Authentication required
-      logger.info('Authentication required, sending authenticated REGISTER');
-      // Handle digest authentication
-    } else {
-      logger.warn(`Registration failed with status ${statusCode}`);
+    } catch (error) {
+      logger.error('Error handling response:', error);
     }
+  }
+
+  parseAuthHeader(authHeader) {
+    const params = {};
+    // Extract realm, nonce, qop, algorithm, etc.
+    const realmMatch = authHeader.match(/realm="([^"]+)"/i);
+    const nonceMatch = authHeader.match(/nonce="([^"]+)"/i);
+    const qopMatch = authHeader.match(/qop="([^"]+)"/i);
+    const algorithmMatch = authHeader.match(/algorithm=([^,\s]+)/i);
+    
+    if (realmMatch) params.realm = realmMatch[1];
+    if (nonceMatch) params.nonce = nonceMatch[1];
+    if (qopMatch) params.qop = qopMatch[1];
+    if (algorithmMatch) params.algorithm = algorithmMatch[1];
+    
+    return params;
+  }
+
+  buildAuthHeader(didNumber, pendingReg, authParams) {
+    const realm = authParams.realm || didNumber.provider || 'bell.uz';
+    const nonce = authParams.nonce || '';
+    const qop = authParams.qop || 'auth';
+    const algorithm = authParams.algorithm || 'MD5';
+    
+    const username = didNumber.trunkUsername;
+    const password = didNumber.trunkPassword;
+    const uri = `sip:${pendingReg.server}`;
+    const method = 'REGISTER';
+    const nc = '00000001';
+    const cnonce = this.generateTag();
+    
+    // Calculate digest response
+    const response = generateDigestResponse(username, realm, password, method, uri, nonce, nc, cnonce, qop);
+    
+    // Build Authorization header
+    let authHeader = `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", response="${response}", algorithm=${algorithm}`;
+    
+    if (qop) {
+      authHeader += `, qop=${qop}, nc=${nc}, cnonce="${cnonce}"`;
+    }
+    
+    return authHeader;
+  }
+
+  extractExpires(message) {
+    const expiresMatch = message.match(/Expires:\s*(\d+)/i);
+    return expiresMatch ? parseInt(expiresMatch[1]) : 3600;
   }
 
   async handleIncomingCall(message, rinfo) {

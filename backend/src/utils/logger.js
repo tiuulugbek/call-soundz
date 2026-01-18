@@ -2,7 +2,8 @@ const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
 
-const logDir = '/var/www/call.soundz.uz/logs';
+// Use environment variable for log directory, or default to project logs folder
+const logDir = process.env.LOG_PATH || path.join(__dirname, '../../logs');
 
 // Ensure log directory exists
 if (!fs.existsSync(logDir)) {

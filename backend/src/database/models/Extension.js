@@ -150,6 +150,7 @@ class Extension {
     return {
       id: row.id,
       username: row.username,
+      password: row.password, // Include password for SIP authentication
       displayName: row.display_name,
       email: row.email,
       enabled: row.enabled,
